@@ -1,0 +1,128 @@
+# openenv.yaml
+# SmartInboxEnv v2.0.0 — OpenEnv specification metadata
+
+name:        SmartInboxEnv
+version:     "2.0.0"
+description: >
+  An AI email triage and decision environment. An agent must classify
+  incoming emails, assign priority, choose an appropriate action
+  (reply / escalate / ignore), and draft a professional response.
+  Designed to benchmark real-world email-handling capabilities of LLM agents.
+  Includes VIP-sender detection, phishing identification, and shaped reward logic.
+
+author:  "SmartInboxEnv contributors"
+license: MIT
+
+# ── Tasks ─────────────────────────────────────────────────────────────────────
+
+tasks:
+  - name: classify
+    difficulty: easy
+    description: "Classify an email as spam, urgent, or normal."
+    max_steps: 1
+    reward_type: deterministic
+    reward_range: [0.0, 1.0]
+    output_schema:
+      category: "spam | urgent | normal"
+
+  - name: prioritize
+    difficulty: medium
+    description: "Assign a priority level (low, medium, high) to an email."
+    max_steps: 1
+    reward_type: partial
+    reward_range: [0.0, 1.0]
+    scoring_note: "Exact=1.0, off-by-one=0.5, opposite-extreme=0.0"
+    output_schema:
+      priority: "low | medium | high"
+
+  - name: triage
+    difficulty: hard
+    description: >
+      Full multi-step email triage: classify, prioritise, choose action
+      (reply/escalate/ignore), and draft a professional response.
+      Strict dependency penalties apply for classification errors and
+      mishandled VIP senders.
+    max_steps: 1
+    reward_type: shaped
+    reward_range: [0.0, 1.0]
+    reward_breakdown:
+      classification: 0.30
+      priority: 0.20
+      action: 0.20
+      response_quality: 0.30
+    penalty_rules:
+      wrong_classification: "multiply total by 0.60"
+      vip_not_escalated: "deduct 0.10 from total"
+      wrong_action_response_cap: "cap response score at 0.60"
+    output_schema:
+      category: "spam | urgent | normal"
+      priority: "low | medium | high"
+      action: "reply | escalate | ignore"
+      response: "string (empty if action=ignore)"
+
+# ── Environment ───────────────────────────────────────────────────────────────
+
+environment:
+  entry_point: "env:SmartInboxEnv"
+  observation_schema: "models:Observation"
+  action_schemas:
+    classify: "models:EasyAction"
+    prioritize: "models:MediumAction"
+    triage: "models:HardAction"
+  reward_schema: "models:Reward"
+  step_result_schema: "models:StepResult"
+
+# ── Runtime ───────────────────────────────────────────────────────────────────
+
+runtime:
+  python: ">=3.9"
+  dependencies: requirements.txt
+
+# ── Inference ─────────────────────────────────────────────────────────────────
+
+inference:
+  script: inference.py
+  env_vars:
+    required:
+      - API_BASE_URL
+      - MODEL_NAME
+    optional:
+      - HF_TOKEN
+      - OPENAI_API_KEY
+  log_format:
+    start: "[START] task={task} env={env} model={model}"
+    step: "[STEP] step={n} action={action_json} reward={reward:.2f} done={done} error={error|null}"
+    end: "[END] success={true|false} steps={n} score={score:.2f} rewards={r1,r2,...}"
+
+# ── Validation ────────────────────────────────────────────────────────────────
+
+validation:
+  script: openenv_validator.py
+  checks: 24
+  exit_code_on_failure: 1
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+
+dataset:
+  type: synthetic
+  size: 30
+  source: "tasks.py::EMAILS"
+  categories: [spam, urgent, normal]
+  priorities: [low, medium, high]
+  actions: [reply, escalate, ignore]
+  email_types:
+    - operational_alerts
+    - security_incidents
+    - phishing_scams
+    - vip_executive_mail
+    - legal_notices
+    - hr_complaints
+    - angry_customers
+    - refund_requests
+    - routine_business
+    - newsletters
+    - ambiguous_edge_cases
+  notes: >
+    All emails are fictional. Reproducible selection via random.Random(seed).
+    VIP senders (ceo@, vp., director@, etc.) always require HIGH priority and escalation.
+    Phishing emails always classify as spam with ignore action.

@@ -261,3 +261,19 @@ if __name__ == "__main__":
     print(f"[SmartInboxEnv] Endpoints: POST /reset  POST /step  GET /state  GET /health", flush=True)
 
     app.run(host=host, port=port, debug=debug)
+# ===============================
+# 🔥 REQUIRED FOR HACKATHON
+# ===============================
+
+@app.post("/openenv/reset")
+def openenv_reset():
+    return reset()
+
+@app.post("/openenv/run")
+def openenv_run():
+    try:
+        from inference import main
+        main()
+        return {"status": "completed"}
+    except Exception as e:
+        return {"error": str(e)}
